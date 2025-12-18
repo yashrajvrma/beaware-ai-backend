@@ -8,7 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsc -b && node dist/index.js",
     "start": "tsc -b && node dist/index.js",
-    "build": "pnpm install && pnpm exec puppeteer browsers install chrome && tsc",
+    "build": "pnpm install && tsc",
     "postinstall": "pnpx prisma generate"
   },
   "keywords": [],

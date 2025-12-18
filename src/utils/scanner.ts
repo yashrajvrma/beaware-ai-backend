@@ -171,7 +171,10 @@ export async function takeScreenshot(url: string): Promise<string | null> {
 
         const browser = await puppeteer.default.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: ['--no-sandbox', '--disable-setuid-sandbox', "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--no-zygote",
+                "--single-process"]
         });
 
         const page = await browser.newPage();
