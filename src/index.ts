@@ -1,6 +1,8 @@
 import express from "express"
 import cors from "cors"
 import dotenv from "dotenv"
+import { urlSchema } from "./schema/url-schema.js"
+import ApiResponse from "./utils/api-response.js"
 
 dotenv.config()
 
@@ -22,10 +24,14 @@ app.get('/', (req, res) => {
     res.send("Hello world")
 })
 
-app.post("/url", (req, res) => {
 
+// routes
+import urlRouter from "./route/url-route.js";
+app.use("/v1/api/url", urlRouter);
 
-})
+// error middleware
+import errorHandler from "./middleware/error-middleware.js";
+app.use(errorHandler);
 
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`)
