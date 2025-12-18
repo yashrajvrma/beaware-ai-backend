@@ -155,3 +155,43 @@ export async function getHostingDetails(
         return null;
     }
 }
+
+export async function takeScreenshot(url: string): Promise<string | null> {
+    // Returns the local file path of the screenshot for Cloudinary upload
+    try {
+        const puppeteer = await import('puppeteer');
+        const fs = await import('fs');
+        const path = await import('path');
+
+        const browser = await puppeteer.default.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 720 });
+
+        // Add https if missing for the navigation
+        const targetUrl = url.startsWith('http') ? url : `https://${url}`;
+
+        await page.goto(targetUrl, { waitUntil: 'networkidle0', timeout: 30000 }).catch(e => console.error("Page load timeout/error", e));
+
+        // Create temp directory if it doesn't exist
+        const tempDir = path.join(process.cwd(), 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        // Save screenshot to temporary file
+        const filename = `screenshot-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+        const filepath = path.join(tempDir, filename);
+
+        await page.screenshot({ path: filepath, type: 'jpeg', quality: 60 });
+
+        await browser.close();
+        return filepath;
+    } catch (e) {
+        console.error("Screenshot Error:", e);
+        return null;
+    }
+}
