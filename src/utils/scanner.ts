@@ -26,7 +26,13 @@ interface HostingInfo {
 }
 
 export async function getWhoisInfo(domain: string): Promise<WhoisInfo> {
-    const tld = domain.split(".").pop();
+    // Extract root domain (remove subdomains like www, api, etc.)
+    const parts = domain.split('.');
+    const rootDomain = parts.length > 2
+        ? parts.slice(-2).join('.') // Take last 2 parts (domain.tld)
+        : domain;
+
+    const tld = rootDomain.split(".").pop();
     let whoisServer = "whois.iana.org"; // Default start, simplified for this implementation
 
     // Simple lookup map for common TLDs to avoid double hops if possible
@@ -37,7 +43,7 @@ export async function getWhoisInfo(domain: string): Promise<WhoisInfo> {
 
     return new Promise((resolve, reject) => {
         const socket = net.createConnection(43, whoisServer, () => {
-            socket.write(domain + "\r\n");
+            socket.write(rootDomain + "\r\n"); // Query root domain
         });
 
         let data = "";

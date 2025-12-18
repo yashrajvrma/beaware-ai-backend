@@ -3,6 +3,7 @@ import ApiResponse from "../utils/api-response.js";
 import AsyncHandler from "../utils/async-handler.js";
 import { getWhoisInfo, getSSLDetails, getHostingDetails, takeScreenshot } from "../utils/scanner.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { analyzeURL, calculateDomainAgeScore, calculateSSLScore, calculateHostingScore } from "../utils/url-analyzer.js";
 import { URL } from "url";
 import fs from "fs";
 
@@ -126,24 +127,107 @@ export const urlChecker = AsyncHandler(async (req, res) => {
         analysisResult = { error: "OPENAI_API_KEY not configured" };
     }
 
-    // Calculate risk score based on the result
-    let risk_score = 50; // default
+    // ===== COMPREHENSIVE SCORING SYSTEM =====
+
+    // 1. URL Structure Analysis (20 points)
+    const urlAnalysis = analyzeURL(url, hostname);
+
+    // 2. Domain Age Analysis (20 points)
+    const domainAgeScore = calculateDomainAgeScore(whois.creationDate);
+
+    // 3. SSL Certificate Analysis (20 points)
+    const sslScore = calculateSSLScore(ssl);
+
+    // 4. Hosting Analysis (10 points)
+    const hostingScore = calculateHostingScore(hosting);
+
+    // 5. Visual Analysis from AI (30 points)
+    let visualScore = { score: 15, max_score: 30, reason: 'AI analysis unavailable' };
     if (analysisResult && analysisResult.result) {
         const result = analysisResult.result.toLowerCase();
         if (result === 'safe') {
-            risk_score = Math.floor(Math.random() * 20) + 10; // 10-30
+            visualScore = { score: 30, max_score: 30, reason: 'No brand impersonation or suspicious content detected' };
         } else if (result === 'suspicious') {
-            risk_score = Math.floor(Math.random() * 20) + 50; // 50-70
+            visualScore = { score: 15, max_score: 30, reason: 'Some suspicious indicators detected' };
         } else if (result === 'dangerous') {
-            risk_score = Math.floor(Math.random() * 10) + 85; // 85-95
+            visualScore = { score: 0, max_score: 30, reason: 'Visual impersonation or malicious content detected' };
         }
     }
 
+    // Calculate total trust score (0-100)
+    const trust_score = Math.min(100, Math.max(0,
+        urlAnalysis.score +
+        domainAgeScore.score +
+        sslScore.score +
+        hostingScore.score +
+        visualScore.score
+    ));
+
+    // Determine overall result based on trust score
+    let overallResult: 'safe' | 'suspicious' | 'dangerous';
+    if (trust_score >= 70) {
+        overallResult = 'safe';
+    } else if (trust_score >= 40) {
+        overallResult = 'suspicious';
+    } else {
+        overallResult = 'dangerous';
+    }
+
+    // Build key factors array
+    const keyFactors: string[] = [];
+    if (domainAgeScore.score >= 15) keyFactors.push(`Domain is well-established (${domainAgeScore.reason.split(' - ')[0]})`);
+    if (domainAgeScore.score < 5) keyFactors.push(`⚠️ ${domainAgeScore.reason}`);
+    if (sslScore.score === 20) keyFactors.push(`Valid SSL certificate from trusted authority`);
+    if (sslScore.score === 0) keyFactors.push(`⚠️ ${sslScore.reason}`);
+    if (urlAnalysis.score < 15) keyFactors.push(`⚠️ URL contains suspicious patterns`);
+    if (visualScore.score === 30) keyFactors.push(`No visual impersonation detected`);
+    if (visualScore.score === 0) keyFactors.push(`⚠️ ${visualScore.reason}`);
+
+    // Combine all warnings
+    const allWarnings = [
+        ...urlAnalysis.issues,
+        ...urlAnalysis.warnings,
+        ...(analysisResult?.reasons || [])
+    ];
+
     const finalResponse = {
-        ...analysisResult,
-        risk_score, // Add the numerical risk score
+        result: overallResult,
+        trust_score,
+        score_breakdown: {
+            url_structure: {
+                score: urlAnalysis.score,
+                max_score: urlAnalysis.max_score,
+                reason: urlAnalysis.issues.length > 0
+                    ? urlAnalysis.issues.join('; ')
+                    : 'URL structure appears normal',
+                warnings: urlAnalysis.warnings
+            },
+            domain_age: {
+                score: domainAgeScore.score,
+                max_score: domainAgeScore.max_score,
+                reason: domainAgeScore.reason
+            },
+            ssl_certificate: {
+                score: sslScore.score,
+                max_score: sslScore.max_score,
+                reason: sslScore.reason
+            },
+            hosting: {
+                score: hostingScore.score,
+                max_score: hostingScore.max_score,
+                reason: hostingScore.reason
+            },
+            visual_analysis: {
+                score: visualScore.score,
+                max_score: visualScore.max_score,
+                reason: visualScore.reason,
+                ai_reasons: analysisResult?.reasons || []
+            }
+        },
+        key_factors: keyFactors,
+        warnings: allWarnings,
         technical_details: technicalData
     };
 
-    return res.json(new ApiResponse(200, finalResponse, "Website analysis completed"))
+    return res.json(new ApiResponse(200, finalResponse, "Website genuineness analysis completed"))
 })
