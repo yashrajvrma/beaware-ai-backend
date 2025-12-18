@@ -1,20 +1,47 @@
 // URL Structure Analysis Utility
 // Detects suspicious patterns, typosquatting, and malicious indicators
 
-interface URLAnalysisResult {
+export interface URLAnalysisResult {
     score: number; // 0-20
     max_score: number;
     issues: string[];
     warnings: string[];
+    impersonated_brand?: string; // Brand being impersonated
+    legitimate_url?: string; // Official URL of the brand
 }
 
-// Common brand names for typosquatting detection
-const POPULAR_BRANDS = [
-    'google', 'facebook', 'amazon', 'microsoft', 'apple', 'netflix', 'paypal',
-    'instagram', 'twitter', 'linkedin', 'github', 'dropbox', 'adobe', 'oracle',
-    'salesforce', 'zoom', 'slack', 'spotify', 'youtube', 'whatsapp', 'telegram',
-    'bank', 'chase', 'wellsfargo', 'citibank', 'americanexpress', 'visa', 'mastercard'
-];
+// Common brand names for typosquatting detection with their official domains
+const POPULAR_BRANDS: { [key: string]: string } = {
+    'google': 'https://www.google.com',
+    'facebook': 'https://www.facebook.com',
+    'amazon': 'https://www.amazon.com',
+    'microsoft': 'https://www.microsoft.com',
+    'apple': 'https://www.apple.com',
+    'netflix': 'https://www.netflix.com',
+    'paypal': 'https://www.paypal.com',
+    'instagram': 'https://www.instagram.com',
+    'twitter': 'https://twitter.com',
+    'linkedin': 'https://www.linkedin.com',
+    'github': 'https://github.com',
+    'dropbox': 'https://www.dropbox.com',
+    'adobe': 'https://www.adobe.com',
+    'oracle': 'https://www.oracle.com',
+    'salesforce': 'https://www.salesforce.com',
+    'zoom': 'https://zoom.us',
+    'slack': 'https://slack.com',
+    'spotify': 'https://www.spotify.com',
+    'youtube': 'https://www.youtube.com',
+    'whatsapp': 'https://www.whatsapp.com',
+    'telegram': 'https://telegram.org',
+    'chase': 'https://www.chase.com',
+    'wellsfargo': 'https://www.wellsfargo.com',
+    'citibank': 'https://www.citi.com',
+    'americanexpress': 'https://www.americanexpress.com',
+    'visa': 'https://www.visa.com',
+    'mastercard': 'https://www.mastercard.com',
+    'hotstar': 'https://www.hotstar.com',
+    'jio': 'https://www.jio.com'
+};
 
 // Suspicious keywords commonly used in phishing
 const SUSPICIOUS_KEYWORDS = [
@@ -38,6 +65,8 @@ export function analyzeURL(url: string, hostname: string): URLAnalysisResult {
     let score = 20; // Start with max score
     const issues: string[] = [];
     const warnings: string[] = [];
+    let impersonated_brand: string | undefined;
+    let legitimate_url: string | undefined;
 
     // 1. Check for suspicious TLD
     const tld = hostname.substring(hostname.lastIndexOf('.'));
@@ -48,12 +77,16 @@ export function analyzeURL(url: string, hostname: string): URLAnalysisResult {
 
     // 2. Check for typosquatting (brand name misspellings)
     const domainParts = hostname.toLowerCase().replace(/\./g, '');
-    for (const brand of POPULAR_BRANDS) {
-        if (domainParts.includes(brand) && !hostname.toLowerCase().includes(`${brand}.com`)) {
+    for (const [brand, officialUrl] of Object.entries(POPULAR_BRANDS)) {
+        const officialDomain = brand + '.com';
+
+        if (domainParts.includes(brand) && !hostname.toLowerCase().includes(officialDomain)) {
             // Check if it's trying to impersonate
             if (domainParts !== brand && domainParts.includes(brand)) {
                 score -= 10;
                 issues.push(`Potential brand impersonation: contains "${brand}" but not official domain`);
+                impersonated_brand = brand;
+                legitimate_url = officialUrl;
                 break;
             }
         }
@@ -107,12 +140,18 @@ export function analyzeURL(url: string, hostname: string): URLAnalysisResult {
     // Ensure score doesn't go below 0
     score = Math.max(0, score);
 
-    return {
+    const result: URLAnalysisResult = {
         score,
         max_score: 20,
         issues,
         warnings
     };
+
+    // Only add optional properties if they have values
+    if (impersonated_brand) result.impersonated_brand = impersonated_brand;
+    if (legitimate_url) result.legitimate_url = legitimate_url;
+
+    return result;
 }
 
 // Calculate domain age score

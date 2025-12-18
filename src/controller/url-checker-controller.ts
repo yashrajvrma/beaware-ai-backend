@@ -58,7 +58,7 @@ export const urlChecker = AsyncHandler(async (req, res) => {
         ssl,
         hosting,
         screenshot_available: !!screenshotUrl,
-        screenshot_url: screenshotUrl || undefined // Cloudinary URL instead of base64
+        screenshot_url: screenshotUrl || null // Always return screenshot_url or null
     };
 
     // 2. Analyze with Agent (Direct API call with Vision)
@@ -74,7 +74,14 @@ export const urlChecker = AsyncHandler(async (req, res) => {
     - New domains (< 1 month) are suspicious.
     - Mismatched SSL issuers are suspicious.
     
-    OUTPUT JSON format with fields: result (safe/suspicious/dangerous), reasons (array of strings).`;
+    IMPORTANT: If you detect that this domain is trying to impersonate a legitimate brand/website, 
+    you MUST provide the official/legitimate website URL in your response.
+    
+    OUTPUT JSON format with fields: 
+    - result (safe/suspicious/dangerous)
+    - reasons (array of strings)
+    - legitimate_url (string, ONLY if impersonation detected - provide the FULL URL of the real website, e.g., "https://www.microsoft.com")
+    - brand_name (string, ONLY if impersonation detected - the name of the brand being impersonated)`;
 
     const userContent: any[] = [
         { type: "text", text: `Analyze this website: ${url}\n\nTECHNICAL DATA:\n${JSON.stringify(technicalData, null, 2)}` }
@@ -126,6 +133,41 @@ export const urlChecker = AsyncHandler(async (req, res) => {
     } else {
         analysisResult = { error: "OPENAI_API_KEY not configured" };
     }
+
+    // NEW: Capture legitimate website screenshot if AI detected impersonation
+    let legitimateScreenshotUrl: string | null = null;
+    let legitimateWebsiteInfo: { brand: string; url: string; screenshot_url: string | null } | null = null;
+
+    if (analysisResult && analysisResult.legitimate_url && analysisResult.brand_name) {
+        console.log(`AI detected impersonation of ${analysisResult.brand_name}. Capturing legitimate website screenshot...`);
+
+        try {
+            const legit_screenshot_path = await takeScreenshot(analysisResult.legitimate_url);
+            if (legit_screenshot_path) {
+                legitimateScreenshotUrl = await uploadOnCloudinary(legit_screenshot_path);
+            }
+
+            legitimateWebsiteInfo = {
+                brand: analysisResult.brand_name,
+                url: analysisResult.legitimate_url,
+                screenshot_url: legitimateScreenshotUrl
+            };
+        } catch (error) {
+            console.error("Failed to capture legitimate website screenshot:", error);
+            // Still return the legitimate URL even if screenshot fails
+            legitimateWebsiteInfo = {
+                brand: analysisResult.brand_name,
+                url: analysisResult.legitimate_url,
+                screenshot_url: null
+            };
+        }
+    }
+
+    // Update technical_details with legitimate website info
+    const updatedTechnicalData = {
+        ...technicalData,
+        legitimate_website: legitimateWebsiteInfo
+    };
 
     // ===== COMPREHENSIVE SCORING SYSTEM =====
 
@@ -226,7 +268,7 @@ export const urlChecker = AsyncHandler(async (req, res) => {
         },
         key_factors: keyFactors,
         warnings: allWarnings,
-        technical_details: technicalData
+        technical_details: updatedTechnicalData // Use updated data with legitimate website
     };
 
     return res.json(new ApiResponse(200, finalResponse, "Website genuineness analysis completed"))
